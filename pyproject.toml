@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nbim-recon"
+version = "0.1.0"
+description = "Dividend reconciliation MVP comparing NBIM and custodian data"
+authors = [{name = "NBIM"}]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+recon = "recon.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
