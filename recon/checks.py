@@ -1,4 +1,4 @@
-"""Deterministic checks that classify breaks."""
+"""Deterministic checks that classify breaks and request LLM annotations."""
 from __future__ import annotations
 
 from decimal import Decimal

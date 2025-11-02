@@ -5,31 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, List
 
+from .llm import plan_agent_actions
 from .models import BreakDetail
-
-
-REASON_AGENT_MAP = {
-    "MISSING_IN_CUSTODIAN": (
-        "CustodyLiaisonAgent",
-        "Request status update from custodian and reconcile holdings",
-    ),
-    "MISSING_IN_NBIM": (
-        "LedgerIngestionAgent",
-        "Investigate NBIM booking pipeline and ingest late files",
-    ),
-    "CURRENCY_MISMATCH": (
-        "StaticDataAgent",
-        "Check security master and FX configuration",
-    ),
-    "AMOUNT_DIFFERENCE": (
-        "CashAllocatorAgent",
-        "Recalculate dividend rate and withholding tax",
-    ),
-    "STATUS_MISMATCH": (
-        "SettlementChaserAgent",
-        "Align settlement status between parties",
-    ),
-}
 
 
 @dataclass(slots=True)
@@ -43,50 +20,30 @@ class AgentTask:
     detail: dict[str, object] = field(default_factory=dict)
 
 
-class ControlTower:
-    """Plans tasks for specialist agents based on break metadata."""
-
-    def __init__(self) -> None:
-        self._counter = 0
-
-    def _next_id(self) -> str:
-        self._counter += 1
-        return f"TASK-{self._counter:03d}"
-
-    def plan_tasks(self, breaks: Iterable[BreakDetail]) -> list[AgentTask]:
-        tasks: List[AgentTask] = []
-        for detail in breaks:
-            agent_name, objective = REASON_AGENT_MAP.get(
-                detail.reason_code,
-                ("OpsControlAgent", "Triage unexpected reconciliation scenario"),
-            )
-            priority = detail.severity.upper()
-            if detail.needs_escalation:
-                priority = "CRITICAL"
-            tasks.append(
-                AgentTask(
-                    id=self._next_id(),
-                    agent=agent_name,
-                    priority=priority,
-                    objective=objective,
-                    detail={
-                        "isin": detail.key.isin,
-                        "account": detail.key.account,
-                        "pay_date": detail.key.pay_date.isoformat(),
-                        "severity": detail.severity,
-                        "needs_escalation": detail.needs_escalation,
-                        "actions": list(detail.actions),
-                        "confidence": detail.confidence,
-                        "llm_source": detail.llm_source,
-                        "reason_code": detail.reason_code,
-                    },
-                )
-            )
-        return tasks
-
-
 def build_agent_plan(breaks: Iterable[BreakDetail]) -> list[AgentTask]:
-    return ControlTower().plan_tasks(breaks)
+    plans = plan_agent_actions(breaks)
+    tasks: List[AgentTask] = []
+    for index, plan in enumerate(plans, start=1):
+        agent = str(plan.get("agent", "")).strip()
+        priority = str(plan.get("priority", "")).strip().upper()
+        objective = str(plan.get("objective", "")).strip()
+        detail = plan.get("detail") if isinstance(plan, dict) else {}
+        if not isinstance(detail, dict):
+            detail = {}
+
+        if not agent or not priority or not objective:
+            continue
+
+        tasks.append(
+            AgentTask(
+                id=f"TASK-{index:03d}",
+                agent=agent,
+                priority=priority,
+                objective=objective,
+                detail=detail,
+            )
+        )
+    return tasks
 
 
 def write_agent_plan(path: Path, breaks: Iterable[BreakDetail]) -> None:

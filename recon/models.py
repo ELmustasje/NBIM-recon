@@ -16,7 +16,7 @@ class BreakAnnotation:
     actions: Tuple[str, ...] = ()
     confidence: Optional[float] = None
     needs_escalation: bool = False
-    source: str = "rule"
+    source: str = "openai"
     raw_response: Dict[str, object] | None = None
 
 
@@ -52,7 +52,7 @@ class BreakDetail:
     actions: Tuple[str, ...] = ()
     confidence: Optional[float] = None
     needs_escalation: bool = False
-    llm_source: str = "rule"
+    llm_source: str = "openai"
     raw_annotation: Dict[str, object] | None = None
 
     def as_dict(self) -> dict[str, str]:
