@@ -49,7 +49,7 @@ def stubbed_llm_client():
                 for item in reversed(content):
                     if not isinstance(item, dict):
                         continue
-                    if item.get("type") != "text":
+                    if item.get("type") not in {"text", "input_text"}:
                         continue
                     try:
                         return json.loads(item.get("text", ""))
