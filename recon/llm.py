@@ -1,13 +1,15 @@
 """LLM-backed explanations and planning for reconciliation breaks."""
 from __future__ import annotations
+from .models import BreakAnnotation, BreakDetail, DividendRecord
 
 from dataclasses import dataclass
 import json
 import logging
 import os
 from typing import Any, Dict, Iterable, Protocol
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv())
 
-from .models import BreakAnnotation, BreakDetail, DividendRecord
 
 LOGGER = logging.getLogger(__name__)
 
@@ -33,7 +35,8 @@ class LLMConfig:
     def from_env(cls) -> "LLMConfig":
         model = os.getenv("NBIM_OPENAI_MODEL", "gpt-4o-mini")
         temperature = float(os.getenv("NBIM_OPENAI_TEMPERATURE", "0.2"))
-        api_key = os.getenv("NBIM_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        api_key = os.getenv("NBIM_OPENAI_API_KEY") or os.getenv(
+            "OPENAI_API_KEY")
         return cls(model=model, temperature=temperature, api_key=api_key)
 
 
@@ -72,7 +75,8 @@ class OpenAIStructuredClient:
 
         payload = _extract_json_payload(response)
         if payload is None:
-            raise RuntimeError("OpenAI response did not include structured JSON payload")
+            raise RuntimeError(
+                "OpenAI response did not include structured JSON payload")
         return payload
 
 
@@ -252,7 +256,8 @@ def _compose_plan_messages(breaks: Iterable[BreakDetail]) -> list[dict[str, Any]
 
 def _request_payload(messages: list[dict[str, Any]], schema: dict[str, Any]) -> dict[str, Any]:
     client = _client()
-    LOGGER.debug("Submitting structured LLM request using schema %s", schema.get("name"))
+    LOGGER.debug(
+        "Submitting structured LLM request using schema %s", schema.get("name"))
     return client.request(messages=messages, schema=schema)
 
 
@@ -276,7 +281,8 @@ def annotate_break(
     actions_field = payload.get("actions") or []
     actions: tuple[str, ...]
     if isinstance(actions_field, Iterable):
-        actions = tuple(str(item).strip() for item in actions_field if str(item).strip())
+        actions = tuple(str(item).strip()
+                        for item in actions_field if str(item).strip())
     else:
         actions = ()
 
@@ -290,7 +296,8 @@ def annotate_break(
     needs_escalation = bool(payload.get("needs_escalation"))
     explanation = summary
     if needs_escalation:
-        explanation = f"{summary} Escalate for human sign-off before auto-resolution."
+        explanation = f"{
+            summary} Escalate for human sign-off before auto-resolution."
 
     return BreakAnnotation(
         explanation=explanation,
@@ -315,7 +322,8 @@ def plan_agent_actions(breaks: Iterable[BreakDetail]) -> list[dict[str, Any]]:
 
     tasks_payload = payload.get("tasks", [])
     if not isinstance(tasks_payload, list):
-        raise RuntimeError("LLM agent plan response did not include a task list")
+        raise RuntimeError(
+            "LLM agent plan response did not include a task list")
 
     normalised_tasks: list[dict[str, Any]] = []
     for raw_task in tasks_payload:
@@ -341,7 +349,8 @@ def plan_agent_actions(breaks: Iterable[BreakDetail]) -> list[dict[str, Any]]:
         )
 
     if not normalised_tasks:
-        raise RuntimeError("LLM agent plan response did not contain any usable tasks")
+        raise RuntimeError(
+            "LLM agent plan response did not contain any usable tasks")
 
     return normalised_tasks
 
@@ -350,7 +359,8 @@ def _extract_json_payload(response: Any) -> Dict[str, Any] | None:
     """Normalise the OpenAI client response into a Python dictionary."""
 
     try:
-        outputs = getattr(response, "output", None) or getattr(response, "outputs", None)
+        outputs = getattr(response, "output", None) or getattr(
+            response, "outputs", None)
     except AttributeError:  # pragma: no cover - unexpected client response
         outputs = None
 
@@ -378,5 +388,3 @@ def _extract_json_payload(response: Any) -> Dict[str, Any] | None:
     except json.JSONDecodeError:
         LOGGER.warning("LLM response could not be parsed as JSON.")
         return None
-
-
