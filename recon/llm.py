@@ -104,14 +104,35 @@ class OpenAIStructuredClient:
                 parse_sig = None
 
             try:
-                if parse_sig and "response_format" in parse_sig.parameters:
-                    response = _call_with_format(parse_method, format_arg="response_format")
-                elif parse_sig and "schema" in parse_sig.parameters:
-                    kwargs = dict(request_kwargs)
-                    kwargs["schema"] = schema
-                    response = parse_method(**kwargs)
+                parameters = parse_sig.parameters if parse_sig else None
+                accepts_var_kwargs = False
+                if parameters:
+                    accepts_var_kwargs = any(
+                        param.kind == inspect.Parameter.VAR_KEYWORD
+                        for param in parameters.values()
+                    )
+
+                call_kwargs = dict(request_kwargs)
+
+                if parameters is None:
+                    # We cannot introspect the signature. Try the most capable call
+                    # first, then gracefully fall back if the method rejects the
+                    # structured response argument.
+                    try:
+                        call_kwargs["response_format"] = response_format
+                        response = parse_method(**call_kwargs)
+                    except TypeError:
+                        call_kwargs.pop("response_format", None)
+                        response = parse_method(**call_kwargs)
                 else:
-                    response = _call_with_format(parse_method, format_arg="response_format")
+                    if "response_format" in parameters or accepts_var_kwargs:
+                        call_kwargs["response_format"] = response_format
+                    elif "schema" in parameters:
+                        call_kwargs["schema"] = schema
+                    elif "format" in parameters:
+                        call_kwargs["format"] = response_format
+
+                    response = parse_method(**call_kwargs)
             except Exception as exc:  # pragma: no cover - network/runtime failure
                 raise RuntimeError("OpenAI response generation failed") from exc
 
