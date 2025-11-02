@@ -7,6 +7,7 @@ import inspect
 import json
 import logging
 import os
+import re
 from typing import Any, Dict, Iterable, Protocol
 try:  # pragma: no cover - optional dependency
     from dotenv import load_dotenv, find_dotenv
@@ -510,10 +511,40 @@ def _extract_json_payload(response: Any) -> Dict[str, Any] | None:
         if not text:
             continue
 
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            LOGGER.warning("LLM response could not be parsed as JSON.")
-            continue
+        normalised = _normalise_json_text(text)
+
+        for candidate in (text, normalised):
+            if not candidate:
+                continue
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+
+        LOGGER.warning("LLM response could not be parsed as JSON.")
+        continue
 
     return None
+
+
+def _normalise_json_text(raw_text: str) -> str | None:
+    """Attempt to strip markdown/code-fence wrappers from JSON text."""
+
+    text = raw_text.strip()
+    if not text:
+        return None
+
+    fenced_match = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
+    if fenced_match:
+        candidate = fenced_match.group(1).strip()
+        if candidate:
+            return candidate
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        candidate = text[start : end + 1].strip()
+        if candidate and candidate != text:
+            return candidate
+
+    return text
