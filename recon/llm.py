@@ -3,6 +3,7 @@ from __future__ import annotations
 from .models import BreakAnnotation, BreakDetail, DividendRecord
 
 from dataclasses import dataclass
+import inspect
 import json
 import logging
 import os
@@ -63,15 +64,59 @@ class OpenAIStructuredClient:
     def request(
         self, *, messages: list[dict[str, Any]], schema: dict[str, Any]
     ) -> dict[str, Any]:
+        request_kwargs: dict[str, Any] = {
+            "model": self._model,
+            "temperature": self._temperature,
+            "input": messages,
+        }
+        response_format = {"type": "json_schema", "json_schema": schema}
+
+        responses_api = self._client.responses
+
+        def _call_with_format(method: Any, *, format_arg: str) -> Any:
+            kwargs = dict(request_kwargs)
+            kwargs[format_arg] = response_format
+            return method(**kwargs)
+
         try:
-            response = self._client.responses.create(  # type: ignore[attr-defined]
-                model=self._model,
-                temperature=self._temperature,
-                input=messages,
-                response_format={"type": "json_schema", "json_schema": schema},
-            )
-        except Exception as exc:  # pragma: no cover - network/runtime failure
-            raise RuntimeError("OpenAI response generation failed") from exc
+            create_sig = inspect.signature(responses_api.create)
+        except (TypeError, ValueError):  # pragma: no cover - builtins w/out signatures
+            create_sig = None
+
+        response: Any | None = None
+
+        if create_sig and "response_format" in create_sig.parameters:
+            call = responses_api.create  # type: ignore[attr-defined]
+            try:
+                response = _call_with_format(call, format_arg="response_format")
+            except Exception as exc:  # pragma: no cover - network/runtime failure
+                raise RuntimeError("OpenAI response generation failed") from exc
+        else:
+            parse_method = getattr(responses_api, "parse", None)
+            if parse_method is None:
+                raise RuntimeError(
+                    "OpenAI client does not support structured responses"
+                )
+
+            try:
+                parse_sig = inspect.signature(parse_method)
+            except (TypeError, ValueError):  # pragma: no cover - builtins w/out signatures
+                parse_sig = None
+
+            try:
+                if parse_sig and "response_format" in parse_sig.parameters:
+                    response = _call_with_format(parse_method, format_arg="response_format")
+                elif parse_sig and "schema" in parse_sig.parameters:
+                    kwargs = dict(request_kwargs)
+                    kwargs["schema"] = schema
+                    response = parse_method(**kwargs)
+                else:
+                    response = _call_with_format(parse_method, format_arg="response_format")
+            except Exception as exc:  # pragma: no cover - network/runtime failure
+                raise RuntimeError("OpenAI response generation failed") from exc
+
+        if response is None:
+            raise RuntimeError("OpenAI response generation failed")
 
         payload = _extract_json_payload(response)
         if payload is None:
