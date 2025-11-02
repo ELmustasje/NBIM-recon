@@ -9,7 +9,27 @@ from typing import List
 
 from .models import DividendRecord
 
-DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y")
+DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d.%m.%Y")
+
+EXPECTED_COLUMNS = {"trade_id", "isin", "pay_date", "account", "amount", "currency"}
+
+NBIM_COLUMNS = {
+    "COAC_EVENT_KEY",
+    "ISIN",
+    "PAYMENT_DATE",
+    "BANK_ACCOUNT",
+    "NET_AMOUNT_SETTLEMENT",
+    "SETTLEMENT_CURRENCY",
+}
+
+CUSTODIAN_COLUMNS = {
+    "COAC_EVENT_KEY",
+    "ISIN",
+    "PAY_DATE",
+    "BANK_ACCOUNTS",
+    "NET_AMOUNT_SC",
+    "SETTLED_CURRENCY",
+}
 
 
 class NormalizationError(RuntimeError):
@@ -46,18 +66,64 @@ def normalise_row(row: dict[str, str], *, source: str) -> DividendRecord:
     )
 
 
+def _sniff_delimiter(sample: str) -> str:
+    """Detect a CSV delimiter, defaulting to comma when uncertain."""
+
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;")
+        return dialect.delimiter
+    except csv.Error:
+        return ";" if sample.count(";") > sample.count(",") else ","
+
+
+def _transform_nbim(row: dict[str, str]) -> dict[str, str]:
+    return {
+        "trade_id": row["COAC_EVENT_KEY"],
+        "isin": row["ISIN"],
+        "pay_date": row["PAYMENT_DATE"],
+        "account": row["BANK_ACCOUNT"],
+        "amount": row["NET_AMOUNT_SETTLEMENT"],
+        "currency": row["SETTLEMENT_CURRENCY"],
+        "status": row.get("STATUS", ""),
+    }
+
+
+def _transform_custodian(row: dict[str, str]) -> dict[str, str]:
+    return {
+        "trade_id": row["COAC_EVENT_KEY"],
+        "isin": row["ISIN"],
+        "pay_date": row["PAY_DATE"],
+        "account": row["BANK_ACCOUNTS"],
+        "amount": row["NET_AMOUNT_SC"],
+        "currency": row["SETTLED_CURRENCY"],
+        "status": row.get("EVENT_TYPE", ""),
+    }
+
+
 def load_file(path: Path, *, source: str) -> List[DividendRecord]:
     if not path.exists():
         raise FileNotFoundError(path)
 
-    with path.open(newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
-        expected = {"trade_id", "isin", "pay_date",
-                    "account", "amount", "currency"}
-        if reader.fieldnames is None or not expected.issubset(reader.fieldnames):
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        sample = handle.read(1024)
+        handle.seek(0)
+        delimiter = _sniff_delimiter(sample)
+        reader = csv.DictReader(handle, delimiter=delimiter)
+
+        if reader.fieldnames is None:
             raise NormalizationError(f"Missing expected columns in {path}")
 
-        records = [normalise_row(row, source=source) for row in reader]
+        headers = set(reader.fieldnames)
+        if EXPECTED_COLUMNS.issubset(headers):
+            rows = reader
+        elif NBIM_COLUMNS.issubset(headers):
+            rows = (_transform_nbim(row) for row in reader)
+        elif CUSTODIAN_COLUMNS.issubset(headers):
+            rows = (_transform_custodian(row) for row in reader)
+        else:
+            raise NormalizationError(f"Missing expected columns in {path}")
+
+        records = [normalise_row(row, source=source) for row in rows]
     return records
 
 
