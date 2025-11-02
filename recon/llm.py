@@ -269,7 +269,105 @@ def _serialise_break(detail: BreakDetail) -> dict[str, Any]:
         },
         "nbim_record": _serialise_record(detail.nbim),
         "custodian_record": _serialise_record(detail.custodian),
-    }
+}
+
+
+def _describe_break_subject(
+    nbim: DividendRecord | None, custodian: DividendRecord | None
+) -> str:
+    """Provide a concise description of the break context."""
+
+    candidate_records = tuple(record for record in (nbim, custodian) if record)
+    if not candidate_records:
+        return "the dividend record"
+
+    isin = next((record.isin for record in candidate_records if record.isin), "")
+    account = next(
+        (record.account for record in candidate_records if record.account), ""
+    )
+    pay_date = next((record.pay_date for record in candidate_records if record.pay_date), None)
+
+    parts: list[str] = []
+    if isin:
+        parts.append(f"ISIN {isin}")
+    if account:
+        parts.append(f"account {account}")
+    if pay_date:
+        parts.append(f"pay date {pay_date.isoformat()}")
+
+    if not parts:
+        return "the dividend record"
+
+    return ", ".join(parts)
+
+
+def _format_amount(record: DividendRecord | None) -> str:
+    if record is None:
+        return "n/a"
+
+    amount = format(record.amount, "f")
+    currency = record.currency.strip()
+    if currency:
+        return f"{amount} {currency}"
+    return amount
+
+
+def _fallback_summary(
+    reason_code: str,
+    nbim: DividendRecord | None,
+    custodian: DividendRecord | None,
+) -> str:
+    subject = _describe_break_subject(nbim, custodian)
+
+    if reason_code == "MISSING_IN_CUSTODIAN":
+        amount = _format_amount(nbim)
+        return (
+            f"NBIM has a dividend of {amount} for {subject}, but the custodian "
+            "record is missing."
+        )
+
+    if reason_code == "MISSING_IN_NBIM":
+        amount = _format_amount(custodian)
+        return (
+            f"The custodian reports a dividend of {amount} for {subject}, but the "
+            "NBIM ledger is missing the record."
+        )
+
+    if reason_code == "AMOUNT_DIFFERENCE":
+        nbim_amount = _format_amount(nbim)
+        custodian_amount = _format_amount(custodian)
+        return (
+            f"Amounts differ for {subject}: NBIM reports {nbim_amount} while "
+            f"custodian reports {custodian_amount}."
+        )
+
+    if reason_code == "CURRENCY_MISMATCH":
+        nbim_currency = nbim.currency if nbim and nbim.currency else "unknown"
+        custodian_currency = (
+            custodian.currency if custodian and custodian.currency else "unknown"
+        )
+        return (
+            f"Currency mismatch for {subject}: NBIM uses {nbim_currency}, "
+            f"custodian uses {custodian_currency}."
+        )
+
+    if reason_code == "STATUS_MISMATCH":
+        nbim_status = nbim.status if nbim and nbim.status else "unknown"
+        custodian_status = (
+            custodian.status if custodian and custodian.status else "unknown"
+        )
+        return (
+            f"Status mismatch for {subject}: NBIM is {nbim_status} while "
+            f"custodian is {custodian_status}."
+        )
+
+    normalised_reason = reason_code.replace("_", " ").strip()
+    if normalised_reason:
+        normalised_reason = normalised_reason.capitalize()
+    else:
+        normalised_reason = "Reconciliation issue"
+
+    return f"{normalised_reason} detected for {subject}; investigate manually."
 
 
 def _compose_annotation_messages(
@@ -381,7 +479,10 @@ def annotate_break(
     if severity not in _VALID_SEVERITIES:
         raise RuntimeError(f"Invalid severity returned by LLM: {severity!r}")
     if not summary:
-        raise RuntimeError("LLM annotation did not include a summary")
+        LOGGER.warning(
+            "LLM annotation did not include a summary; using fallback message"
+        )
+        summary = _fallback_summary(reason_code, nbim, custodian)
 
     actions_field = payload.get("actions") or []
     actions: tuple[str, ...]
