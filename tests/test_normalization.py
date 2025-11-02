@@ -37,3 +37,43 @@ def test_load_file_requires_expected_columns(tmp_path: Path):
 
     with pytest.raises(normalization.NormalizationError):
         normalization.load_file(path, source="TEST")
+
+
+def test_load_file_transforms_nbim_schema(tmp_path: Path):
+    content = (
+        "COAC_EVENT_KEY;ISIN;PAYMENT_DATE;BANK_ACCOUNT;NET_AMOUNT_SETTLEMENT;SETTLEMENT_CURRENCY\n"
+        "N1;US1111111111;07.02.2025;12345;1234.56;USD\n"
+    )
+    path = tmp_path / "nbim.csv"
+    path.write_text("\ufeff" + content, encoding="utf-8")
+
+    records = normalization.load_file(path, source="NBIM")
+    assert len(records) == 1
+    record = records[0]
+    assert record.trade_id == "N1"
+    assert record.isin == "US1111111111"
+    assert record.account == "12345"
+    assert record.amount == Decimal("1234.56")
+    assert record.currency == "USD"
+    assert record.pay_date.isoformat() == "2025-02-07"
+    assert record.status == ""
+
+
+def test_load_file_transforms_custodian_schema(tmp_path: Path):
+    content = (
+        "COAC_EVENT_KEY;ISIN;PAY_DATE;BANK_ACCOUNTS;NET_AMOUNT_SC;SETTLED_CURRENCY;EVENT_TYPE\n"
+        "C1;US2222222222;08.02.2025;54321;2000;EUR;SETTLED\n"
+    )
+    path = tmp_path / "cust.csv"
+    path.write_text(content)
+
+    records = normalization.load_file(path, source="CUSTODIAN")
+    assert len(records) == 1
+    record = records[0]
+    assert record.trade_id == "C1"
+    assert record.isin == "US2222222222"
+    assert record.account == "54321"
+    assert record.amount == Decimal("2000.00")
+    assert record.currency == "EUR"
+    assert record.pay_date.isoformat() == "2025-02-08"
+    assert record.status == "SETTLED"
