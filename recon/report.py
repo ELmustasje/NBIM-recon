@@ -25,6 +25,10 @@ def write_csv(path: Path, breaks: Iterable[BreakDetail]) -> None:
                 "reason_code",
                 "severity",
                 "explanation",
+                "actions",
+                "confidence",
+                "needs_escalation",
+                "llm_source",
             ],
         )
         writer.writeheader()
@@ -36,7 +40,7 @@ def write_json(path: Path, breaks: Iterable[BreakDetail]) -> None:
     import json
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = [detail.as_dict() for detail in breaks]
+    payload = [detail.as_json() for detail in breaks]
     with path.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)
 
@@ -58,6 +62,11 @@ def generate_markdown_summary(
     lines.append(f"- NBIM records processed: **{nbim_total}**")
     lines.append(f"- Custodian records processed: **{custodian_total}**")
     lines.append(f"- Breaks detected: **{len(breaks)}**")
+    if breaks:
+        auto_ready = sum(1 for detail in breaks if not detail.needs_escalation)
+        escalations = len(breaks) - auto_ready
+        lines.append(f"- Auto-resolution candidates: **{auto_ready}**")
+        lines.append(f"- Requires human escalation: **{escalations}**")
     lines.append("")
 
     if counter:
@@ -78,17 +87,21 @@ def generate_markdown_summary(
         lines.append("## Detailed explanations")
         lines.append("")
         lines.append(
-            "| ISIN | Account | Pay date | Reason | Severity | Explanation |")
-        lines.append("| --- | --- | --- | --- | --- | --- |")
+            "| ISIN | Account | Pay date | Reason | Severity | Explanation | Actions | Escalation | Confidence |"
+        )
+        lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- |")
         for detail in breaks:
             lines.append(
-                "| {isin} | {account} | {date} | {reason} | {severity} | {explanation} |".format(
+                "| {isin} | {account} | {date} | {reason} | {severity} | {explanation} | {actions} | {escalation} | {confidence} |".format(
                     isin=detail.key.isin,
                     account=detail.key.account,
                     date=detail.key.pay_date.isoformat(),
                     reason=detail.reason_code,
                     severity=detail.severity.title(),
                     explanation=detail.explanation.replace("|", "\\|"),
+                    actions="; ".join(detail.actions).replace("|", "\\|"),
+                    escalation="Yes" if detail.needs_escalation else "No",
+                    confidence=f"{detail.confidence:.0%}" if detail.confidence is not None else "",
                 )
             )
         lines.append("")
