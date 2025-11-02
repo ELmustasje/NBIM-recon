@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .agents import write_agent_plan
 from .checks import evaluate_matches
 from .matching import match_records
 from .normalization import load_sources
@@ -24,9 +25,11 @@ def run_reconciliation(
     csv_path = out_dir / "recon_breaks.csv"
     json_path = out_dir / "recon_breaks.json"
     report_path = out_dir / "recon_report.md"
+    plan_path = out_dir / "recon_agent_plan.json"
 
     write_csv(csv_path, breaks)
     write_json(json_path, breaks)
+    write_agent_plan(plan_path, breaks)
     markdown = generate_markdown_summary(
         breaks,
         nbim_total=len(nbim_records),
