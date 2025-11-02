@@ -8,7 +8,15 @@ import json
 import logging
 import os
 from typing import Any, Dict, Iterable, Protocol
-from dotenv import load_dotenv, find_dotenv
+try:  # pragma: no cover - optional dependency
+    from dotenv import load_dotenv, find_dotenv
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    def load_dotenv(*_args: Any, **_kwargs: Any) -> bool:
+        return False
+
+    def find_dotenv(*_args: Any, **_kwargs: Any) -> str:
+        return ""
+
 load_dotenv(find_dotenv())
 
 
@@ -443,6 +451,47 @@ def plan_agent_actions(breaks: Iterable[BreakDetail]) -> list[dict[str, Any]]:
 def _extract_json_payload(response: Any) -> Dict[str, Any] | None:
     """Normalise the OpenAI client response into a Python dictionary."""
 
+    def _extract_text(obj: Any) -> str | None:
+        """Best-effort extraction of text from OpenAI SDK objects."""
+
+        if obj is None:
+            return None
+
+        if isinstance(obj, str):
+            stripped = obj.strip()
+            return stripped or None
+
+        if isinstance(obj, dict):
+            for key in ("text", "content", "value"):
+                value = obj.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+                if isinstance(value, list):
+                    for item in value:
+                        candidate = _extract_text(item)
+                        if candidate:
+                            return candidate
+            return None
+
+        for attr in ("text", "content", "value"):
+            if not hasattr(obj, attr):
+                continue
+
+            attr_value = getattr(obj, attr)
+            if isinstance(attr_value, str) and attr_value.strip():
+                return attr_value.strip()
+            if isinstance(attr_value, list):
+                for item in attr_value:
+                    candidate = _extract_text(item)
+                    if candidate:
+                        return candidate
+
+        # Some SDK objects expose a "message" attribute with nested content.
+        if hasattr(obj, "message"):
+            return _extract_text(getattr(obj, "message"))
+
+        return None
+
     try:
         outputs = getattr(response, "output", None) or getattr(
             response, "outputs", None)
@@ -456,20 +505,15 @@ def _extract_json_payload(response: Any) -> Dict[str, Any] | None:
     if not outputs:
         return None
 
-    block = outputs[0]
-    content = getattr(block, "content", None)
-    if isinstance(content, list) and content:
-        text = content[0].get("text")
-    elif hasattr(block, "message") and hasattr(block.message, "content"):
-        text = block.message.content[0].get("text")  # type: ignore[assignment]
-    else:
-        text = getattr(block, "text", None)
+    for block in outputs:
+        text = _extract_text(block)
+        if not text:
+            continue
 
-    if not text:
-        return None
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            LOGGER.warning("LLM response could not be parsed as JSON.")
+            continue
 
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        LOGGER.warning("LLM response could not be parsed as JSON.")
-        return None
+    return None
