@@ -274,19 +274,30 @@ def _compose_annotation_messages(
     return [
         {
             "role": "system",
-            "content": "You are a senior NBIM operations analyst specialised in dividend reconciliations.",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": (
+                        "You are a senior NBIM operations analyst specialised in "
+                        "dividend reconciliations."
+                    ),
+                }
+            ],
         },
         {
             "role": "user",
             "content": [
                 {
-                    "type": "text",
+                    "type": "input_text",
                     "text": (
                         "Classify and explain the reconciliation break. "
                         "Return JSON that aligns with the provided schema."
                     ),
                 },
-                {"type": "text", "text": json.dumps(payload, indent=2)},
+                {
+                    "type": "input_text",
+                    "text": json.dumps(payload, indent=2),
+                },
             ],
         },
     ]
@@ -297,16 +308,21 @@ def _compose_plan_messages(breaks: Iterable[BreakDetail]) -> list[dict[str, Any]
     return [
         {
             "role": "system",
-            "content": (
-                "You are the NBIM reconciliation control tower. "
-                "Design specialist agent tasks that remediate the breaks."
-            ),
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": (
+                        "You are the NBIM reconciliation control tower. "
+                        "Design specialist agent tasks that remediate the breaks."
+                    ),
+                }
+            ],
         },
         {
             "role": "user",
             "content": [
                 {
-                    "type": "text",
+                    "type": "input_text",
                     "text": (
                         "Create a task list for execution. "
                         "Each task must specify the agent best positioned to act, an operations-ready objective, "
@@ -314,7 +330,10 @@ def _compose_plan_messages(breaks: Iterable[BreakDetail]) -> list[dict[str, Any]
                         "Use the schema to emit valid JSON."
                     ),
                 },
-                {"type": "text", "text": json.dumps(payload, indent=2)},
+                {
+                    "type": "input_text",
+                    "text": json.dumps(payload, indent=2),
+                },
             ],
         },
     ]
