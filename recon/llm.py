@@ -365,7 +365,18 @@ def annotate_break(
     messages = _compose_annotation_messages(reason_code, nbim, custodian)
     payload = _request_payload(messages, _ANNOTATION_SCHEMA)
 
-    severity = str(payload.get("severity", "")).lower()
+    severity_raw = payload.get("severity", "")
+    severity = str(severity_raw).strip().lower()
+    if severity not in _VALID_SEVERITIES:
+        match = re.search(r"\b(low|medium|high)\b", severity)
+        if match:
+            severity = match.group(1)
+        else:
+            LOGGER.warning(
+                "LLM returned unexpected severity %r; defaulting to 'medium'",
+                severity_raw,
+            )
+            severity = "medium"
     summary = str(payload.get("summary", "")).strip()
     if severity not in _VALID_SEVERITIES:
         raise RuntimeError(f"Invalid severity returned by LLM: {severity!r}")
