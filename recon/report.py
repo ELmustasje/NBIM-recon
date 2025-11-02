@@ -25,6 +25,10 @@ def write_csv(path: Path, breaks: Iterable[BreakDetail]) -> None:
                 "reason_code",
                 "severity",
                 "explanation",
+                "recommendation",
+                "tags",
+                "confidence",
+                "automation",
             ],
         )
         writer.writeheader()
@@ -77,21 +81,22 @@ def generate_markdown_summary(
     if breaks:
         lines.append("## Detailed explanations")
         lines.append("")
-        lines.append(
-            "| ISIN | Account | Pay date | Reason | Severity | Explanation |")
-        lines.append("| --- | --- | --- | --- | --- | --- |")
         for detail in breaks:
-            lines.append(
-                "| {isin} | {account} | {date} | {reason} | {severity} | {explanation} |".format(
-                    isin=detail.key.isin,
-                    account=detail.key.account,
-                    date=detail.key.pay_date.isoformat(),
-                    reason=detail.reason_code,
-                    severity=detail.severity.title(),
-                    explanation=detail.explanation.replace("|", "\\|"),
-                )
-            )
-        lines.append("")
+            lines.append(f"### {detail.key.isin} – {detail.key.account} – {detail.key.pay_date.isoformat()}")
+            lines.append("")
+            lines.append(f"- **Reason:** {detail.reason_code}")
+            lines.append(f"- **Severity:** {detail.severity.title()}")
+            if detail.automation:
+                lines.append(f"- **Automation mode:** {detail.automation}")
+            if detail.confidence is not None:
+                lines.append(f"- **Confidence:** {detail.confidence:.2f}")
+            if detail.tags:
+                lines.append(f"- **Tags:** {', '.join(detail.tags)}")
+            if detail.recommendation:
+                lines.append(f"- **Next step:** {detail.recommendation}")
+            lines.append("")
+            lines.append(detail.explanation)
+            lines.append("")
     else:
         lines.append("No breaks detected. All deterministic checks passed.")
 

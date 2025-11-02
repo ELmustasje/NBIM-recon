@@ -36,6 +36,10 @@ class BreakDetail:
     reason_code: str
     explanation: str
     severity: str
+    recommendation: str = ""
+    tags: tuple[str, ...] = ()
+    confidence: Optional[float] = None
+    automation: str = ""
 
     def as_dict(self) -> dict[str, str]:
         return {
@@ -47,4 +51,8 @@ class BreakDetail:
             "reason_code": self.reason_code,
             "severity": self.severity,
             "explanation": self.explanation,
+            "recommendation": self.recommendation,
+            "tags": ", ".join(self.tags),
+            "confidence": f"{self.confidence:.2f}" if self.confidence is not None else "",
+            "automation": self.automation,
         }

@@ -31,14 +31,18 @@ def evaluate_pair(
     else:  # pragma: no cover - defensive guard
         return None
 
-    explanation, severity = annotate_break(reason, nbim, custodian)
+    annotation = annotate_break(reason, nbim, custodian)
     return BreakDetail(
         key=key,
         nbim=nbim,
         custodian=custodian,
         reason_code=reason,
-        explanation=explanation,
-        severity=severity,
+        explanation=annotation.explanation,
+        severity=annotation.severity,
+        recommendation=annotation.recommendation,
+        tags=annotation.tags,
+        confidence=annotation.confidence,
+        automation=annotation.automation,
     )
 
 

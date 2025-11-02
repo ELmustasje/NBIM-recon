@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .checks import evaluate_matches
+from .llm import get_advisor
 from .matching import match_records
 from .normalization import load_sources
 from .report import generate_markdown_summary, write_csv, write_json, write_markdown
@@ -33,3 +34,9 @@ def run_reconciliation(
         custodian_total=len(custodian_records),
     )
     write_markdown(report_path, markdown)
+
+    advisor = get_advisor()
+    summary = advisor.summarize_breaks(breaks)
+    if summary:
+        brief_path = out_dir / "recon_llm_brief.md"
+        write_markdown(brief_path, summary)
